@@ -3,8 +3,8 @@ title: "testing github doc"
 author: "HansMartin"
 date: "April 7, 2020"
 output: 
-  github_document:
-  always_allow_html: yes
+  html_document:
+    keep_md: true
 ---
 
 ```{r include=FALSE, echo=FALSE, message=FALSE}
