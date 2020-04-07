@@ -1,0 +1,91 @@
+---
+title: "testing github doc"
+author: "HansMartin"
+date: "April 7, 2020"
+output: 
+  github_document:
+  always_allow_html: yes
+---
+
+```{r include=FALSE, echo=FALSE, message=FALSE}
+library(dplyr)
+library(adehabitatHR)
+library(ggplot2)
+library(magrittr)
+library(leaflet)
+library(rgdal)
+library(sf)
+```
+
+
+```{r include=FALSE, echo=FALSE, message=FALSE}
+CollarData1<-read.csv(file="C:/Users/Hans Martin/Box Sync/YahatindaGPSData/GPSDATA2001_Aug2019.csv",
+                      stringsAsFactors = F)#read in GPS data
+```
+
+```{r include=FALSE, echo=FALSE, message=FALSE}
+###THIS STEP IS NOT NECESSARY FOR YOUR DATA AS LONG AS YOU HAVE ROWS THAT HAVE 0's for locations removed.
+#Filter out rows that do not have coordinates
+CollarData<-CollarData1 %>% 
+  filter(LONGITUDE!=0 & LATITUDE!=0) %>% #remove rows that have no location data
+  mutate(sex=ifelse(stringr::str_detect(ELKID, "^YLM"),"M","F")) %>% #Filtered as desired
+  filter(sex=="M") %>% 
+  mutate(FxDate_Time_GMT = as.POSIXct(GMT_Fix_Date_Time, "%Y-%m-%d %H:%M:%S", tz="GMT"),#format timestamp (not really necessary)
+         monthday=as.integer(format(as.Date(GMT_DATE, format="%d.%m.%Y"),"%m%d")),
+         year=as.integer(format(as.Date(GMT_DATE, format="%d.%m.%Y"),"%Y"))
+         ) %>% 
+  filter(complete.cases(LONGITUDE,LATITUDE)) %>% #filter complete cases of gps locations
+  filter(year>2018)#only use gps data from 2019
+```
+
+
+```{r include=FALSE, echo=FALSE, message=FALSE}
+#Create spatialpoints dataframe
+coords<-cbind(CollarData$LONGITUDE,CollarData$LATITUDE) #vector of coordinates
+sp=SpatialPoints(coords, #vector of coordinates
+                 CRS("+proj=longlat +ellps=WGS84") #specify the coordinate reference system
+                 ) 
+GPSspdf<-SpatialPointsDataFrame(
+  coords=sp, 
+  data=CollarData #add data to make this a spatial points data frame
+)
+GPSspdf<-spTransform(GPSspdf,CRS("+proj=utm +zone=11 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"))
+```
+
+```{r include=FALSE, echo=FALSE, message=FALSE}
+#create kernel utilization distribution
+elk_UD<-kernelUD(GPSspdf,grid = 1000)
+#make isopleths for each percentage
+ud_25<-getverticeshr(elk_UD,percent = 25)
+ud_50<-getverticeshr(elk_UD,percent = 50)
+ud_75<-getverticeshr(elk_UD,percent = 75)
+ud_95<-getverticeshr(elk_UD,percent = 95)
+
+
+#bind the utilization distribution vertices together to create a spatial points data frame
+elk_vrt<-rbind(ud_25,ud_50,ud_75,ud_95)
+#utilization distribution names
+kd_names<-c("25","50","75","95")
+#name the id's based on the isopleth %
+elk_vrt$id<-kd_names
+```
+
+```{r}
+##Use this code to write the KD to a shapefile on your computer
+#library(GISTools)
+#library(rgdal)
+#writeOGR(elk_vrt,dsn="tempdir",layer="elk_vrt", driver = "ESRI Shapefile")
+
+#writeOGR(sdf_poly,"test.kml",layer="sdf_poly",driver = "KML")
+#test2<-readOGR(dsn="tempdir",layer="elk_vrt")
+#plot(test2)
+```
+
+```{r  echo=FALSE}
+sdf_poly <- spTransform(elk_vrt, CRS('+init=epsg:4326'))#transform the dataframe's coordinate reference system to latlong
+#plot
+leaflet(sdf_poly) %>% 
+  addTiles() %>%
+  addPolygons(weight=1,fillOpacity = .2,color=c("red","orange","yellow","green")) %>% 
+  addLegend('bottomleft', colors=c("red","orange","yellow","green"),labels  = kd_names, title = 'Utilization Distribution')
+```
